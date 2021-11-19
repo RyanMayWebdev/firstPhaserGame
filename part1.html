@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>Making your first Phaser 3 Game - Part 1</title>
+    <script src="//cdn.jsdelivr.net/npm/phaser@3.11.0/dist/phaser.js"></script>
+    <style type="text/css">
+        body {
+            margin: 0;
+        }
+    </style>
+</head>
+
+<body>
+
+    <script type="text/javascript">
+        const gameApp = () => {
+            const width = screen.width;
+            const height = screen.height;
+            const config = {
+                type: Phaser.AUTO,
+                width: 800,
+                height: 600,
+                physics: {
+                    default: 'arcade',
+                    arcade: {
+                        gravity: {
+                            y: 300
+                        },
+                        debug: false
+                    }
+                },
+                scene: {
+                    preload: preload,
+                    create: create,
+                    update: update
+                }
+            };
+
+            const game = new Phaser.Game(config);
+            let cursors;
+            let platforms;
+            let player;
+            let score = 0;
+            let scoreText;
+            let bombs;
+            let stars;
+
+
+            function preload() {
+                // Load assets here
+                this.load.image('sky', 'assets/sky.png');
+                this.load.image('ground', 'assets/platform.png');
+                this.load.image('star', 'assets/star.png');
+                this.load.image('bomb', 'assets/bomb.png');
+                this.load.spritesheet('dude',
+                    'assets/dude.png', {
+                        frameWidth: 32,
+                        frameHeight: 48
+                    }
+                );
+            }
+
+            function collectStar(player, star) {
+                // Disables physics and disables it's aprent making it no longer display
+                star.disableBody(true, true);
+                score += 10;
+                scoreText.setText('Score: ' + score);
+                // check if all stars were collected, if so release a bomb and respawn stars
+                // countActive is a predefined group method that checks how many instances of a group object there are
+                if (stars.countActive(true) === 0) {
+                    stars.children.iterate(function (child) {
+
+                        child.enableBody(true, child.x, 0, true, true);
+
+                    });
+                    // Create a random x value to deploy the bomb at, always opposite of the character to give them a chance to move
+                    let x = (player.x < 400) ? Phaser.Math.Between(400, 800) : Phaser.Math.Between(0, 400);
+                    // create a bomb using the defined bomb group in the create fucntion
+                    const bomb = bombs.create(x, 16, 'bomb');
+                    // Add bounce, world collision and velocity
+                    bomb.setBounce(1);
+                    bomb.setCollideWorldBounds(true);
+                    bomb.setVelocity(Phaser.Math.Between(-200, 200), 20);
+
+                }
+            }
+
+            function hitBomb(player, bomb) {
+                // if the player hit a bomb, pause the physics, tint the player and end the game
+                this.physics.pause();
+                player.setTint(0xff0000);
+                player.anims.play('turn');
+                gameOver = true;
+            }
+
+            function create() {
+                // Create any required game objects here
+                // The order of images determines the layering of them
+                this.add.image(400, 300, 'sky');
+
+                // Added stars to the game, dynamic physics.
+                stars = this.physics.add.group({
+                    key: 'star',
+                    repeat: 11,
+                    setXY: { //Set start position and offset each child by the set amounts
+                        x: 12,
+                        y: 0,
+                        stepX: 70
+                    }
+                });
+                // Initialize the score object using text game object. 16,16 is the coordinates, score:0 is the default string and the object is the styling
+                scoreText = this.add.text(16, 16, 'score: 0', {
+                    fontSize: '32px',
+                    fill: '#000'
+                });
+                stars.children.iterate(function (child) {
+                    // Sets random bounce values per child
+                    child.setBounceY(Phaser.Math.FloatBetween(0.4, 0.8));
+
+                });
+                bombs = this.physics.add.group();
+                // Creates platform group with static physics, meaning they never move. PArams are coordinates and image to use
+
+                platforms = this.physics.add.staticGroup();
+
+                platforms.create(400, 568, 'ground').setScale(2).refreshBody();
+
+                platforms.create(600, 400, 'ground');
+                platforms.create(50, 250, 'ground');
+                platforms.create(750, 220, 'ground');
+
+                // Creates a player sprite, default phsyics are dynamic unless otherwise specified
+                player = this.physics.add.sprite(100, 450, 'dude');
+                // Bounces is how much the sprite will bounce after landing from a jump
+                player.setBounce(0.2);
+                // Sets collision bounds for edge of world
+                player.setCollideWorldBounds(true);
+                // Gravity effect on sprite
+                player.body.setGravityY(300)
+
+                // Animations for sprite movement
+                this.anims.create({
+                    key: 'left',
+                    frames: this.anims.generateFrameNumbers('dude', {
+                        start: 0,
+                        end: 3
+                    }),
+                    frameRate: 10,
+                    repeat: -1 //Causes loop
+                });
+
+                this.anims.create({
+                    key: 'turn',
+                    frames: [{
+                        key: 'dude',
+                        frame: 4
+                    }],
+                    frameRate: 20
+                });
+
+                this.anims.create({
+                    key: 'right',
+                    frames: this.anims.generateFrameNumbers('dude', {
+                        start: 5,
+                        end: 8
+                    }),
+                    frameRate: 10,
+                    repeat: -1
+                });
+
+                // Creates a cursor object with up, down, left, right properties which are all isntance sof key objects, poll for these to determine movement.
+                cursors = this.input.keyboard.createCursorKeys();
+                // Addes a collision detector, pass in the to objects you want to detect collision between
+                this.physics.add.collider(player, platforms);
+                this.physics.add.collider(stars, platforms);
+                // Checks for overlap of player and stars object. If there is an overlap, they are passed to the collectStar function. 
+                this.physics.add.overlap(player, stars, collectStar, null, this);
+                // Colliders for bombs and player as well as platforms
+                this.physics.add.collider(bombs, platforms);
+                this.physics.add.collider(player, bombs, hitBomb, null, this);
+
+            }
+
+            function update() {
+                // Move player leeft for as long as left arrow is pressed
+                if (cursors.left.isDown) {
+                    player.setVelocityX(-160);
+
+                    player.anims.play('left', true);
+                    // Move player right for as long as right arrow is pressed
+                } else if (cursors.right.isDown) {
+                    player.setVelocityX(160);
+
+                    player.anims.play('right', true);
+                    // Stop player and play turn animation
+                } else {
+                    player.setVelocityX(0);
+
+                    player.anims.play('turn');
+                }
+                // If player is on the ground and up is pressed, jump
+                if (cursors.up.isDown && player.body.touching.down) {
+                    player.setVelocityY(-500);
+                }
+            }
+        }
+
+        gameApp();
+    </script>
+
+</body>
+
+</html>
